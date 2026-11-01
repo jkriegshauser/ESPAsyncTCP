@@ -85,6 +85,7 @@ extern "C"{
 
 static uint32_t NumOpenTcpSessions = 0;
 static uint32_t MaxNumOpenTcpSessions = -2; // effectivly no limit
+static uint32_t MinFreeHeapForNewSessions = 0; // 0 = accept regardless of free heap
 
 /*
   Async Client Error Return Tracker
@@ -1221,6 +1222,14 @@ void AsyncServer::SetMaxNumOpenTcpSessions(uint32_t value)
     MaxNumOpenTcpSessions = value;
 }
 
+// Below this much free heap a new connection is refused instead of accepted. Accepting one
+// allocates the client and the request objects, and on the ESP8266 a failed allocation there
+// ends in a panic rather than an error, so it is better to let the peer retry a moment later.
+void AsyncServer::SetMinFreeHeapForNewSessions(uint32_t bytes)
+{
+    MinFreeHeapForNewSessions = bytes;
+}
+
 err_t AsyncServer::_accept(tcp_pcb* pcb, err_t err){
   //http://savannah.nongnu.org/bugs/?43739
   if(NULL == pcb || ERR_OK != err){
@@ -1234,6 +1243,12 @@ err_t AsyncServer::_accept(tcp_pcb* pcb, err_t err){
     incEventCount(EE_ACCEPT_CB);
 #endif
     return ERR_OK;
+  }
+  if(MinFreeHeapForNewSessions && ESP.getFreeHeap() < MinFreeHeapForNewSessions){
+    // Not enough memory to serve another connection. Refuse it the same way as the session limit below.
+    ASYNC_TCP_DEBUG("_accept: free heap %u below %u, connection refused\n", ESP.getFreeHeap(), MinFreeHeapForNewSessions);
+    tcp_abort(pcb);
+    return ERR_ABRT;
   }
   if(NumOpenTcpSessions >= MaxNumOpenTcpSessions){
     // Refuse the connection. lwIP expects tcp_abort() together with ERR_ABRT.

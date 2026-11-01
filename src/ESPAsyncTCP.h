@@ -304,6 +304,7 @@ class AsyncServer {
     bool getNoDelay();
     uint8_t status();
     void SetMaxNumOpenTcpSessions(uint32_t value);
+    void SetMinFreeHeapForNewSessions(uint32_t bytes); // refuse connections while free heap is below this; 0 = no floor
 
 #ifdef DEBUG_MORE
     int getEventCount(size_t ee) const { return _event_count[ee];}
